@@ -1,0 +1,140 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>FRED Econ Chat architecture</title>
+<style>
+  body { margin:0; background:#fcfcfb; font-family: "Segoe UI", Inter, Arial, sans-serif; }
+  .box { fill:#ffffff; stroke:#8a8983; stroke-width:1.2; }
+  .core { fill:#eef4fc; stroke:#2a78d6; stroke-width:1.5; }
+  .ext { fill:#fdf1ea; stroke:#eb6834; stroke-width:1.5; }
+  .store { fill:#eaf7f1; stroke:#1baf7a; stroke-width:1.2; }
+  .group { fill:none; stroke:#b8b7b0; stroke-dasharray:5 4; }
+  .t { font-size:15px; font-weight:600; fill:#0b0b0b; }
+  .s { font-size:12px; fill:#52514e; }
+  .m { font-size:11.5px; fill:#52514e; font-family: Consolas, monospace; }
+  .lbl { font-size:11.5px; fill:#3a3936; }
+  .h { font-size:20px; font-weight:700; fill:#0b0b0b; }
+  .note { font-size:12.5px; fill:#3a3936; }
+  .arrow { stroke:#52514e; stroke-width:1.4; fill:none; marker-end:url(#a); }
+  .arrow2 { stroke:#2a78d6; stroke-width:1.4; fill:none; marker-end:url(#b); }
+</style></head>
+<body>
+<svg width="1200" height="900" viewBox="0 0 1200 900" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#52514e"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2a78d6"/></marker>
+  </defs>
+
+  <text class="h" x="40" y="30">FRED Econ Chat: system architecture</text>
+
+  <!-- Row 1 -->
+  <rect class="box" x="40" y="60" width="230" height="72" rx="8"/>
+  <text class="t" x="155" y="92" text-anchor="middle">User (web browser)</text>
+  <text class="s" x="155" y="112" text-anchor="middle">natural-language questions</text>
+
+  <rect class="core" x="380" y="60" width="300" height="72" rx="8"/>
+  <text class="t" x="530" y="88" text-anchor="middle">Streamlit chat UI</text>
+  <text class="m" x="530" y="106" text-anchor="middle">app.py</text>
+  <text class="s" x="530" y="123" text-anchor="middle">KPI tiles · chat · inline Plotly · tool-call viewer</text>
+
+  <rect class="box" x="860" y="60" width="300" height="72" rx="8"/>
+  <text class="t" x="1010" y="88" text-anchor="middle">Evaluation harness</text>
+  <text class="m" x="1010" y="106" text-anchor="middle">eval/run_eval.py</text>
+  <text class="s" x="1010" y="123" text-anchor="middle">19 golden questions · number grounding</text>
+
+  <!-- Row 2 -->
+  <rect class="core" x="380" y="230" width="300" height="84" rx="8"/>
+  <text class="t" x="530" y="260" text-anchor="middle">Agent loop</text>
+  <text class="m" x="530" y="278" text-anchor="middle">econchat/agent.py</text>
+  <text class="s" x="530" y="296" text-anchor="middle">system prompt + grounding rules · ≤ 8 tool rounds</text>
+
+  <rect class="ext" x="860" y="230" width="300" height="84" rx="8"/>
+  <text class="t" x="1010" y="260" text-anchor="middle">LLM (OpenAI-compatible API)</text>
+  <text class="s" x="1010" y="280" text-anchor="middle">default gpt-5-mini · or Groq / Gemini</text>
+  <text class="s" x="1010" y="297" text-anchor="middle">chooses tools, writes the answer</text>
+
+  <!-- Row 3 -->
+  <rect class="core" x="380" y="410" width="300" height="84" rx="8"/>
+  <text class="t" x="530" y="440" text-anchor="middle">Tool layer (8 tools)</text>
+  <text class="m" x="530" y="458" text-anchor="middle">econchat/tools.py</text>
+  <text class="s" x="530" y="476" text-anchor="middle">JSON schemas · dispatcher · errors returned, not raised</text>
+
+  <!-- Row 4 -->
+  <rect class="core" x="230" y="580" width="290" height="100" rx="8"/>
+  <text class="t" x="375" y="608" text-anchor="middle">Analytics (pandas / SciPy)</text>
+  <text class="m" x="375" y="626" text-anchor="middle">econchat/analytics.py</text>
+  <text class="s" x="375" y="645" text-anchor="middle">YoY, annualized rates, CAGR, quarterly alignment</text>
+  <text class="s" x="375" y="662" text-anchor="middle">correlation, lead-lag, eras, gap handling</text>
+
+  <rect class="core" x="560" y="580" width="270" height="100" rx="8"/>
+  <text class="t" x="695" y="608" text-anchor="middle">Chart builder (Plotly)</text>
+  <text class="m" x="695" y="626" text-anchor="middle">econchat/charts.py</text>
+  <text class="s" x="695" y="645" text-anchor="middle">spec → figure: comparison, line,</text>
+  <text class="s" x="695" y="662" text-anchor="middle">scatter, rolling corr, annual bars</text>
+
+  <!-- Row 5 -->
+  <rect class="core" x="230" y="770" width="290" height="84" rx="8"/>
+  <text class="t" x="375" y="800" text-anchor="middle">Data layer</text>
+  <text class="m" x="375" y="818" text-anchor="middle">econchat/data.py</text>
+  <text class="s" x="375" y="836" text-anchor="middle">parse CSV · keep missing as NaN</text>
+
+  <rect class="group" x="570" y="738" width="600" height="140" rx="10"/>
+  <text class="s" x="586" y="758">Lookup order: cache if under 12 h old → FRED live → stale cache → bundled snapshot</text>
+  <rect class="ext" x="586" y="770" width="180" height="90" rx="8"/>
+  <text class="t" x="676" y="796" text-anchor="middle">FRED live</text>
+  <text class="s" x="676" y="816" text-anchor="middle">fredgraph.csv (no key)</text>
+  <text class="s" x="676" y="834" text-anchor="middle">GDP, CPILFESL</text>
+  <rect class="store" x="780" y="770" width="180" height="90" rx="8"/>
+  <text class="t" x="870" y="796" text-anchor="middle">Local cache</text>
+  <text class="m" x="870" y="816" text-anchor="middle">data/cache/</text>
+  <text class="s" x="870" y="834" text-anchor="middle">12-hour TTL · git-ignored</text>
+  <rect class="store" x="974" y="770" width="180" height="90" rx="8"/>
+  <text class="t" x="1064" y="796" text-anchor="middle">Snapshot (in repo)</text>
+  <text class="m" x="1064" y="816" text-anchor="middle">data/snapshot/</text>
+  <text class="s" x="1064" y="834" text-anchor="middle">offline fallback</text>
+
+  <!-- Notes panel -->
+  <rect class="box" x="40" y="200" width="300" height="300" rx="8" style="fill:#f6f6f3"/>
+  <text class="t" x="58" y="228">Design principles</text>
+  <text class="note" x="58" y="256">• The LLM never does arithmetic.</text>
+  <text class="note" x="70" y="274">Every number comes from a tool.</text>
+  <text class="note" x="58" y="300">• Charts are built from a spec,</text>
+  <text class="note" x="70" y="318">not LLM-written code.</text>
+  <text class="note" x="58" y="344">• Every answer states the period</text>
+  <text class="note" x="70" y="362">and the measure (level / YoY).</text>
+  <text class="note" x="58" y="388">• Missing data is reported, not</text>
+  <text class="note" x="70" y="406">silently filled (Oct 2025 CPI).</text>
+  <text class="note" x="58" y="432">• Out-of-scope or forecast</text>
+  <text class="note" x="70" y="450">questions are declined.</text>
+  <text class="note" x="58" y="476">• Provider set by 3 env variables.</text>
+
+  <!-- Arrows -->
+  <path class="arrow" d="M270,96 L378,96"/>
+  <text class="lbl" x="324" y="88" text-anchor="middle">question</text>
+
+  <path class="arrow" d="M500,132 L500,228"/>
+  <text class="lbl" x="494" y="185" text-anchor="end">ask()</text>
+  <path class="arrow2" d="M560,228 L560,134"/>
+  <text class="lbl" x="568" y="185">answer + figures</text>
+
+  <path class="arrow" d="M940,132 L940,170 L668,170 L668,228"/>
+  <text class="lbl" x="795" y="163" text-anchor="middle">same agent, scripted questions</text>
+
+  <path class="arrow" d="M680,252 L858,252"/>
+  <text class="lbl" x="769" y="244" text-anchor="middle">messages + tool schemas</text>
+  <path class="arrow2" d="M858,292 L682,292"/>
+  <text class="lbl" x="769" y="310" text-anchor="middle">tool calls / final text</text>
+
+  <path class="arrow" d="M500,314 L500,408"/>
+  <text class="lbl" x="494" y="366" text-anchor="end">tool name + args</text>
+  <path class="arrow2" d="M560,408 L560,316"/>
+  <text class="lbl" x="568" y="366">JSON result</text>
+
+  <path class="arrow" d="M470,494 L400,578"/>
+  <path class="arrow" d="M590,494 L660,578"/>
+  <path class="arrow" d="M560,630 L522,630"/>
+  <text class="lbl" x="541" y="622" text-anchor="middle">uses</text>
+
+  <path class="arrow" d="M375,680 L375,768"/>
+  <text class="lbl" x="383" y="728">pandas Series</text>
+  <path class="arrow" d="M520,812 L568,812"/>
+</svg>
+</body></html>

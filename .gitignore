@@ -1,0 +1,25 @@
+# Secrets (never commit)
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Python / tooling
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Runtime FRED cache (a snapshot is committed under data/snapshot/)
+data/cache/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local eval console log
+eval/last_run.log

@@ -1,0 +1,299 @@
+<!doctype html><html><head><meta charset='utf-8'><title>FRED Econ Chat report</title><style>
+@page { size: Letter; margin: 0.7in 0.75in; }
+body { font-family: "Segoe UI", Inter, Arial, sans-serif; color: #1d1d1b; font-size: 10.5pt; line-height: 1.45; max-width: 7in; margin: 0 auto; }
+h1 { font-size: 19pt; margin: 0 0 4pt; line-height: 1.2; }
+h2 { font-size: 13.5pt; margin: 18pt 0 6pt; border-bottom: 1px solid #d9d8d2; padding-bottom: 3pt; break-after: avoid; }
+h3 { font-size: 11.5pt; margin: 12pt 0 4pt; break-after: avoid; }
+p, li { margin: 4pt 0; }
+table { border-collapse: collapse; margin: 8pt 0; font-size: 9.5pt; width: 100%; break-inside: avoid; }
+th, td { border-bottom: 1px solid #e3e2dc; padding: 3pt 6pt; text-align: left; vertical-align: top; }
+th { background: #f3f3ef; font-weight: 600; }
+img { width: 100%; margin: 6pt 0; break-inside: avoid; }
+code { font-family: Consolas, monospace; font-size: 9pt; background: #f3f3ef; padding: 0 2pt; border-radius: 2px; }
+pre { background: #f3f3ef; padding: 6pt 8pt; border-radius: 4px; font-size: 9pt; }
+pre code { background: none; padding: 0; }
+</style></head><body><h1>FRED Econ Chat: An LLM-Powered Conversational Interface for U.S. GDP and Core CPI</h1>
+<p><strong>Technical report</strong> · Data retrieved from FRED on 15 November 2026 · Model: <code>gpt-5-mini</code></p>
+<h2>1. Objective</h2>
+<p>The goal was to build a conversational application that lets a user ask plain-English questions about two FRED series, U.S. Gross Domestic Product (<code>GDP</code>) and Core CPI (<code>CPILFESL</code>), and get accurate answers, calculated indicators, trend descriptions and charts. The application must handle questions about the latest values, change over time, the current inflation rate, the relationship between GDP growth and core inflation, visual comparisons, and overall summaries.</p>
+<p>The main design requirement was <strong>trustworthy numbers</strong>. Language models are fluent but unreliable at arithmetic and prone to stating plausible figures that were never computed. The system is built so that the model never produces a number itself.</p>
+<h2>2. Data</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>GDP</th>
+<th>CPILFESL (Core CPI)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Source</td>
+<td>BEA via FRED</td>
+<td>BLS via FRED</td>
+</tr>
+<tr>
+<td>Frequency</td>
+<td>Quarterly, from 1947 Q1</td>
+<td>Monthly, from Jan 1957</td>
+</tr>
+<tr>
+<td>Units</td>
+<td>Billions of dollars, seasonally adjusted annual rate, <strong>nominal</strong></td>
+<td>Index, 1982-84 = 100, seasonally adjusted</td>
+</tr>
+<tr>
+<td>Latest observation</td>
+<td>2026 Q3: $33,010.0 bn</td>
+<td>October 2026: 339.900</td>
+</tr>
+</tbody>
+</table>
+<p>Both series are downloaded from FRED's public CSV endpoint (<code>fredgraph.csv</code>), which needs no API key. Three properties of the data shaped the design:</p>
+<ol>
+<li><strong>A missing month.</strong> The October 2025 Core CPI value is blank in FRED because BLS did not publish it during the federal government shutdown. The year-over-year rate for October 2026 therefore cannot be computed from published data. The system keeps the gap rather than filling it silently. It reports the latest computable rate (September 2026) and, separately, an estimate based on a log-linearly interpolated base month, clearly labelled as an estimate.</li>
+<li><strong>Nominal GDP.</strong> GDP growth includes inflation, so "GDP growth vs. inflation" is partly an identity: nominal growth ≈ real growth + inflation. The system offers a <em>real growth proxy</em> (nominal GDP growth minus core CPI inflation) and calls it an approximation, since the proper deflator is the GDP price index.</li>
+<li><strong>Mixed frequencies.</strong> To compare the series, core CPI is averaged within each quarter (at least 2 of 3 months required) and both are expressed as year-over-year % changes.</li>
+</ol>
+<h2>3. System architecture</h2>
+<p><img alt="Architecture" src="../docs/architecture.png" /></p>
+<p>The application has five layers:</p>
+<ul>
+<li><strong>Data layer</strong> (<code>data.py</code>). Downloads both CSVs, parses missing values as NaN, and caches the files for 12 hours. If FRED is unreachable it falls back to the stale cache and then to a snapshot bundled in the repository, so the app always starts.</li>
+<li><strong>Analytics layer</strong> (<code>analytics.py</code>). Pure pandas and SciPy functions: YoY, MoM, quarterly-annualized and 3- and 6-month annualized rates, CAGR, quarterly alignment, Pearson and Spearman correlation, lead-lag correlation, era breakdowns, and rolling correlation. Every result is a JSON-ready dictionary that names its periods and definitions.</li>
+<li><strong>Tool layer</strong> (<code>tools.py</code>). Eight functions exposed to the LLM with JSON schemas: <code>get_latest</code>, <code>core_inflation</code>, <code>compute_change</code>, <code>annual_table</code>, <code>get_observations</code>, <code>compare_growth_inflation</code>, <code>trend_summary</code> and <code>make_chart</code>. Errors such as dates out of range are returned to the model as data, so it can explain them instead of crashing.</li>
+<li>
+<p><strong>Agent</strong> (<code>agent.py</code>). A standard tool-calling loop of up to 8 rounds over the Chat Completions API. A system prompt fixes the grounding rules:</p>
+<ul>
+<li>every number must come from a tool result;</li>
+<li>each figure names its period and measure;</li>
+<li>out-of-scope and forecast questions are declined;</li>
+<li>causal claims are not allowed.</li>
+</ul>
+<p>Because it uses only the OpenAI-compatible API, the provider can be switched with three environment variables (OpenAI, Groq or Gemini).</p>
+</li>
+<li>
+<p><strong>UI</strong> (<code>app.py</code>). A Streamlit chat with headline metrics, example-question buttons, interactive Plotly charts inline, and an optional viewer showing the tool calls behind each answer.</p>
+</li>
+</ul>
+<p><strong>Key design decisions</strong></p>
+<ul>
+<li><em>Tool calling rather than a code-executing "pandas agent".</em> Letting the model write and run code is more flexible but non-deterministic, harder to test and a security risk. Fixed, unit-tested tools make every figure reproducible and traceable.</li>
+<li>
+<p><em>Charts from a spec, not from generated code.</em> The model chooses a chart type, series, transform and window, and <code>charts.py</code> builds the figure. All charts therefore share one visual system:</p>
+<ul>
+<li>fixed colors (GDP blue, core CPI orange);</li>
+<li>NBER recession shading;</li>
+<li>never two y-axes. Series in different units are indexed to 100 or shown as rates.</li>
+</ul>
+</li>
+<li>
+<p><em>Conversation memory keeps only the final question and answer texts</em>, not raw tool payloads. This keeps follow-up questions cheap while still allowing references like "show it as a scatter plot".</p>
+</li>
+</ul>
+<h2>4. Analytical methods</h2>
+<table>
+<thead>
+<tr>
+<th>Measure</th>
+<th>Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>YoY % change</td>
+<td>x<sub>t</sub> / x<sub>t−4</sub> − 1 (quarterly) or x<sub>t</sub> / x<sub>t−12</sub> − 1 (monthly). This is the headline "inflation rate".</td>
+</tr>
+<tr>
+<td>Quarterly annualized</td>
+<td>(x<sub>t</sub> / x<sub>t−1</sub>)<sup>4</sup> − 1. This is how BEA reports GDP growth.</td>
+</tr>
+<tr>
+<td>3-month / 6-month annualized</td>
+<td>(x<sub>t</sub> / x<sub>t−3</sub>)<sup>4</sup> − 1 and (x<sub>t</sub> / x<sub>t−6</sub>)<sup>2</sup> − 1. These show inflation momentum.</td>
+</tr>
+<tr>
+<td>CAGR</td>
+<td>(x<sub>end</sub> / x<sub>start</sub>)<sup>1/years</sup> − 1</td>
+</tr>
+<tr>
+<td>Real growth proxy</td>
+<td>nominal GDP YoY − core CPI YoY (quarterly)</td>
+</tr>
+<tr>
+<td>Lead-lag</td>
+<td>corr(GDP growth<sub>t</sub>, core inflation<sub>t+k</sub>) for k = −8…8 quarters</td>
+</tr>
+<tr>
+<td>Eras</td>
+<td>1958–83 (high inflation), 1984–2007 (Great Moderation), 2008–19 (post-financial-crisis), 2020–present</td>
+</tr>
+</tbody>
+</table>
+<p>Pandemic sensitivity: 2020 Q2 to 2021 Q2 can be excluded, because those YoY rates are dominated by the collapse and its base effect.</p>
+<h2>5. Findings</h2>
+<h3>5.1 GDP</h3>
+<ul>
+<li>Nominal GDP reached <strong>$33.01 trillion in 2026 Q3</strong>. That is 5.61% quarterly annualized growth and <strong>5.87% year over year</strong>.</li>
+<li>Over the past ten years (2016 Q3 to 2026 Q3), GDP rose from $18.89 trillion to $33.01 trillion, up 74.7%. That is a <strong>5.74% compound annual rate</strong>, slightly above the 4.43% 20-year rate because of high post-2020 inflation.</li>
+<li>Growth was steady at 3.5–5% a year (Q4 over Q4) before the pandemic. It then went through the deepest quarterly drop on record, −8.24% in 2020 Q2 (versus −1.95% in 2008 Q4), and a 12.4% rebound in 2021. Since then it has eased back toward 5–6%.</li>
+</ul>
+<p><img alt="GDP annual growth" src="../figures/report_02_gdp_annual_growth_10y.png" /></p>
+<h3>5.2 Core CPI inflation</h3>
+<ul>
+<li><strong>Current rate:</strong> the latest computable core inflation rate is <strong>2.57% (September 2026)</strong>. The official October 2026 year-over-year rate cannot be computed because of the October 2025 gap; the interpolated estimate is 2.77%. Short-run momentum is mixed: 3.75% on a 3-month annualized basis versus 2.69% over 6 months.</li>
+<li><strong>Last five years:</strong> core inflation went from 4.59% in October 2021 to a <strong>peak of 6.62% in September 2022</strong>, the highest since August 1982. It then fell steadily to a low of 2.45% in August 2026. Core prices rose a cumulative 20.67% over the five years, an average of 3.83% a year.</li>
+<li><strong>Long run:</strong> decade averages show the 1970s (6.49%) and 1980s (6.07%) high-inflation era, peaking at 13.6% in June 1980. The 2010s averaged 1.85%. The 2020s so far average 3.64%.</li>
+</ul>
+<p><img alt="Core CPI YoY, last five years" src="../figures/report_03_core_cpi_yoy_5y.png" /></p>
+<h3>5.3 Relationship between GDP growth and core inflation</h3>
+<p><img alt="GDP growth vs core inflation" src="../figures/report_05_gdp_vs_core_cpi.png" /></p>
+<table>
+<thead>
+<tr>
+<th>Statistic (quarterly YoY, 1958 Q1–2026 Q3)</th>
+<th>All quarters</th>
+<th>Pandemic excluded</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pearson r: nominal GDP growth vs core inflation</td>
+<td><strong>0.525</strong> (n = 275)</td>
+<td>0.537 (n = 270)</td>
+</tr>
+<tr>
+<td>Spearman ρ</td>
+<td>0.533</td>
+<td>0.521</td>
+</tr>
+<tr>
+<td>Pearson r: real growth proxy vs core inflation</td>
+<td><strong>−0.276</strong></td>
+<td>−0.321</td>
+</tr>
+<tr>
+<td>Strongest lead-lag correlation</td>
+<td>k = +3 quarters, r = 0.635</td>
+<td>k = +6, r = 0.668</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Era</th>
+<th>Avg nominal GDP growth</th>
+<th>Avg core inflation</th>
+<th>Avg real proxy</th>
+<th>r</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1958–1983</td>
+<td>8.19%</td>
+<td>4.92%</td>
+<td>3.27%</td>
+<td>0.41</td>
+</tr>
+<tr>
+<td>1984–2007</td>
+<td>5.94%</td>
+<td>3.18%</td>
+<td>2.77%</td>
+<td>0.32</td>
+</tr>
+<tr>
+<td>2008–2019</td>
+<td>3.39%</td>
+<td>1.87%</td>
+<td>1.52%</td>
+<td>0.04</td>
+</tr>
+<tr>
+<td>2020–present</td>
+<td>6.24%</td>
+<td>3.63%</td>
+<td>2.61%</td>
+<td>0.68</td>
+</tr>
+</tbody>
+</table>
+<p>What the numbers show:</p>
+<ol>
+<li><strong>The positive correlation is real but largely mechanical.</strong> Nominal GDP contains the price level, so higher inflation raises measured GDP growth. Once inflation is subtracted out, the real growth proxy is <em>negatively</em> related to inflation (r ≈ −0.28 to −0.32). High-inflation periods, such as the 1970s and 2022, came with weaker real growth.</li>
+<li><strong>It is a low-frequency, regime-level relationship.</strong> The 40-quarter rolling correlation (below) stays mostly between −0.3 and +0.4 and reached −0.78 around 2000. Within a decade, the two series do not track each other reliably. The full-sample r comes mainly from shared long-run regimes, with high values of both in the 1970s and low values of both in the 2010s. In 2008–2019 the two were essentially unrelated (r = 0.04).</li>
+<li><strong>GDP growth tends to lead core inflation.</strong> Correlations rise from k = 0 to a plateau at k = 3–6 quarters. This fits the idea that demand pressure shows up in prices with a lag, but a common driver such as monetary policy could produce the same pattern. It is evidence of timing, not causation.</li>
+<li><strong>The post-2020 link (r ≈ 0.68) is driven by a single episode.</strong> That episode is the pandemic collapse, the rebound and the inflation surge. The relationship holds when the most distorted quarters are excluded, but one episode is a thin basis for generalizing.</li>
+</ol>
+<p><img alt="Rolling correlation" src="../figures/report_07_rolling_corr.png" /></p>
+<h2>6. Evaluation</h2>
+<p><strong>Unit tests.</strong> 24 pytest tests run without an API key. They cover:</p>
+<ul>
+<li>CSV parsing of blank and "." values;</li>
+<li>exact growth formulas on synthetic series;</li>
+<li>missing months not being bridged, and the interpolated estimate recovering the true rate;</li>
+<li><code>years_back</code> windows, quarterly alignment, and clear errors for out-of-range dates;</li>
+<li>every tool and chart on real data;</li>
+<li>the agent loop, run with a scripted fake LLM.</li>
+</ul>
+<p><strong>End-to-end evaluation</strong> (<code>eval/run_eval.py</code>). 19 questions in 4 conversations: the 7 required questions, follow-ups that depend on context, specific dates and paraphrases, and edge cases (GDP in 1930, unemployment, a forecast request, "real GDP"). Each answer is checked automatically on three things:</p>
+<ul>
+<li>an appropriate tool was called;</li>
+<li>a chart was produced when one was requested;</li>
+<li><strong>every number in the answer appears in the tool results of that conversation</strong>, allowing for rounding and conversion to trillions.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Appropriate tool selected</td>
+<td>19 / 19</td>
+</tr>
+<tr>
+<td>Chart produced when requested</td>
+<td>4 / 4</td>
+</tr>
+<tr>
+<td>Numbers checked / not traceable to a tool</td>
+<td>154 / <strong>0</strong></td>
+</tr>
+<tr>
+<td>Latency per answer (median, range)</td>
+<td>6.0 s (3.5–14.2 s)</td>
+</tr>
+<tr>
+<td>Tokens per 19-question run</td>
+<td>≈ 98k input, 9k output (about $0.04 with <code>gpt-5-mini</code>)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Issues found by evaluation and fixed:</strong></p>
+<ul>
+<li><strong>Wrong measure for an inflation question.</strong> "How has inflation changed?" was answered with the change in the index level. The tool now returns the YoY rate at the start and end of the window, and the prompt asks for the path of the rate.</li>
+<li><strong>Wrong line color.</strong> A chart description called the orange line "red". The chart tool now reports each line's color.</li>
+<li><strong>Estimate presented as official, and a misread peak.</strong> The interpolated October 2026 estimate was given as an official figure, and the window's first point was called its peak. The chart tool now returns labelled start, end, high and low values and flags estimated points.</li>
+<li><strong>Wrong month named as missing.</strong> The model said the October 2026 index was missing. The tool's explanation now states explicitly which month is missing.</li>
+</ul>
+<p>These are errors of interpretation, not invented numbers. An automated number check cannot catch them, which is why the transcripts were also reviewed by hand.</p>
+<p>Full transcripts with charts are in <code>docs/sample_conversations.md</code>.</p>
+<h2>7. Limitations and future work</h2>
+<ul>
+<li><strong>Nominal-only GDP.</strong> Adding real GDP (<code>GDPC1</code>) and the GDP deflator would replace the proxy with a proper real growth rate. PCE inflation would allow comparison with the Fed's 2% target.</li>
+<li><strong>Revisions.</strong> Answers reflect the data as of retrieval. Vintage analysis through ALFRED would show how GDP estimates change after release.</li>
+<li><strong>Semantic checking.</strong> The grounding check proves that numbers are traceable, not that they are interpreted correctly. An LLM-as-judge or rubric review could be added for that.</li>
+<li><strong>Statistics.</strong> Correlations on overlapping YoY rates are autocorrelated, so the reported p-values overstate significance. HAC standard errors or a VAR/Granger framework would be the rigorous next step.</li>
+<li><strong>Forecasting</strong> is deliberately out of scope.</li>
+</ul>
+<h2>8. How to run</h2>
+<pre><code class="language-bash">pip install -r requirements.txt
+cp .env.example .env     # add LLM_API_KEY
+streamlit run app.py
+</code></pre>
+<p>See <code>README.md</code> for provider options, tests and evaluation commands.</p></body></html>

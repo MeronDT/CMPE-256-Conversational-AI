@@ -1,0 +1,62 @@
+# Each conversation runs in one chat session (follow-ups keep context).
+# expect_tools: at least one of these tools must be called ([] = no tool should be needed).
+conversations:
+  - id: required
+    title: The seven required questions
+    turns:
+      - q: What is the latest reported U.S. GDP?
+        expect_tools: [get_latest]
+      - q: How has U.S. GDP changed over the past 10 years?
+        expect_tools: [compute_change, annual_table]
+      - q: What is the current Core CPI inflation rate?
+        expect_tools: [core_inflation, get_latest]
+      - q: How has Core CPI inflation changed over the past five years?
+        expect_tools: [compute_change, annual_table, get_observations]
+      - q: What is the relationship between GDP growth and Core CPI inflation?
+        expect_tools: [compare_growth_inflation]
+      - q: Generate a visualization comparing GDP growth and Core CPI inflation over time.
+        expect_tools: [make_chart]
+        expect_chart: true
+      - q: Summarize the key economic trends observed in both datasets.
+        expect_tools: [trend_summary]
+
+  - id: followups
+    title: Follow-ups and other charts
+    turns:
+      - q: Does that relationship hold if you leave out the pandemic quarters?
+        expect_tools: [compare_growth_inflation]
+      - q: Show it as a scatter plot.
+        expect_tools: [make_chart]
+        expect_chart: true
+      - q: Plot core inflation over the last five years.
+        expect_tools: [make_chart]
+        expect_chart: true
+      - q: How much have core consumer prices risen since January 2020?
+        expect_tools: [compute_change]
+
+  - id: specific
+    title: Specific dates and paraphrases
+    turns:
+      - q: what was gdp at the end of 2008?
+        expect_tools: [get_observations, compute_change, annual_table]
+      - q: What was core inflation in June 2022?
+        expect_tools: [core_inflation, get_observations]
+      - q: How big is the US economy right now in trillions?
+        expect_tools: [get_latest]
+      - q: Show annual GDP growth for the last 10 years as a bar chart.
+        expect_tools: [make_chart]
+        expect_chart: true
+
+  - id: edge
+    title: Edge cases and out-of-scope questions
+    turns:
+      - q: What was U.S. GDP in 1930?
+        expect_tools: [get_observations, compute_change, annual_table, get_latest]
+        allow_no_tools: true
+      - q: What is the current unemployment rate?
+        expect_tools: []
+      - q: Will core inflation fall below 2% next year?
+        expect_tools: []
+        allow_any_tools: true
+      - q: What is real GDP growth right now?
+        expect_tools: [compare_growth_inflation, get_latest]
